@@ -1,6 +1,32 @@
 services:
+  # Use in production.
+  # Add your email in command below, uncomment labels in other services (and add your domains there)
+  # to issue ssl certificates
+  # traefik:
+  #   image: traefik:v3
+  #   command:
+  #     - "--providers.docker=true"
+  #     - "--providers.docker.exposedbydefault=false"
+  #     - "--entrypoints.web.address=:80"
+  #     - "--entrypoints.websecure.address=:443"
+  #     - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+  #     - "--certificatesresolvers.letsencrypt.acme.email=youremail@domain.com"
+  #     - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+  #     - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+  #     - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - "/var/run/docker.sock:/var/run/docker.sock:ro"
+  #     - "./letsencrypt:/letsencrypt"
+  #   restart: unless-stopped
+  #   networks:
+  #     - saleor-backend-tier
+
   api:
     image: ghcr.io/saleor/saleor:3.23
+    # user: "1000:1000" # production only
     ports:
       - 8000:8000
     restart: unless-stopped
@@ -18,16 +44,30 @@ services:
     env_file:
       - common.env
       - backend.env
-    environment:
-      - DASHBOARD_URL=http://localhost:9000/
-      - ALLOWED_HOSTS=localhost,127.0.0.1,api
+    # Production only - Uncomment and change domain below.
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.api.rule=Host(`api.domain.com`)"
+    #   - "traefik.http.routers.api.entrypoints=websecure"
+    #   - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.api.loadbalancer.server.port=8000"
 
   dashboard:
     image: ghcr.io/saleor/saleor-dashboard:3.23
     ports:
       - 9000:80
     restart: unless-stopped
+    environment:
+      - API_URI=http://localhost:8000/graphql/ # replace API_URI with API_URL in production
+    # Production only - Uncomment and change domain below.
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.dashboard.rule=Host(`admin.domain.com`)"
+    #   - "traefik.http.routers.dashboard.entrypoints=websecure"
+    #   - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.dashboard.loadbalancer.server.port=80"
 
+  # Remove db block entirely in production
   db:
     image: library/postgres:15-alpine
     ports:
@@ -54,6 +94,8 @@ services:
 
   worker:
     image: ghcr.io/saleor/saleor:3.23
+    # user: "1000:1000" # production only
+    # In production remove '-B' from the below command and add celery-beat (see below)
     command: celery -A saleor --app=saleor.celeryconf:app worker --loglevel=info -B
     restart: unless-stopped
     networks:
@@ -63,11 +105,28 @@ services:
       - backend.env
     depends_on:
       - cache
-      - mailpit
+      - mailpit # remove in prod
     volumes:
       # shared volume between worker and api for media
       - saleor-media:/app/media
 
+  # In production use below celery-beat service separating it out from worker to avoid errors
+  # celery-beat:
+  #   image: ghcr.io/saleor/saleor:3.23
+  #   user: "1000:1000"
+  #   command: celery -A saleor --app=saleor.celeryconf:app beat --loglevel=info -s /tmp/celerybeat-schedule --pidfile=/tmp/celerybeat.pid
+  #   restart: unless-stopped
+  #   networks:
+  #     - saleor-backend-tier
+  #   env_file:
+  #     - common.env
+  #     - backend.env
+  #   depends_on:
+  #     - cache
+  #   volumes:
+  #     - saleor-media:/app/media
+
+  # Keep or remove in production based on your requirements
   jaeger:
     image: jaegertracing/jaeger
     ports:
@@ -81,6 +140,7 @@ services:
       - type: tmpfs
         target: /tmp
 
+  # Remove in production
   mailpit:
     image: axllent/mailpit
     ports:
@@ -91,6 +151,7 @@ services:
       - saleor-backend-tier
 
 volumes:
+  # Remove saleor-db in production
   saleor-db:
     driver: local
   saleor-cache:

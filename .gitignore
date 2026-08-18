@@ -1,1 +1,5 @@
 .idea
+backend.prod.env
+backend.local.env
+common.prod.env
+docker-compose.prod.yml
